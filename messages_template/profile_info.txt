@@ -1,0 +1,8 @@
+👤 Ваш профиль:
+➖➖➖➖➖➖➖➖➖➖
+🆔 Ваш ID:  USER_ID
+🗿 Никнейм:  USER_NICKNAME
+⏱ Вы с нами с  DATE_TO_JOIN
+💰 Баланс:  BALANCE
+🔗 Подключенных аккаунтов: ACCOUNTS_COUNT
+🤑 Рефералов: REFERALS_COUNT
