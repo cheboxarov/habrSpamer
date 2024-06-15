@@ -1,3 +1,6 @@
+from DBManager import Account
+
+
 class TMessagesManager:
     def __init__(self):
         import os.path
@@ -32,15 +35,21 @@ class TMessagesManager:
             raise ValueError("Нет шаблона информации по тех. поддержке (messages_template/support.txt)!")
         self._support = open("messages_template/support.txt", "r", encoding="utf-8").read()
 
+        if not os.path.exists("messages_template/accounts_view.txt"):
+            raise ValueError("Нет шаблона отображения аккаунтов (messages_template/accounts_view.txt)!")
+        self._accounts_view = open("messages_template/accounts_view.txt", "r", encoding="utf-8").read()
+
     def get_start_message(self):
         return self._start_message
 
     def get_user_info_message(self, accounts_count:int, work_accounts_cout:int,
                               work_accounts_sale:int, balance:int, time_to_work_accounts:int):
         user_info_str = self._user_info_temlate.replace("ACCOUNTS_COUNT", str(accounts_count))
-        user_info_str = user_info_str.replace("WORK_ACCOUNTS_COUT", str(work_accounts_cout))
+        user_info_str = user_info_str.replace("WORK_ACCOUNTS_COUNT", str(work_accounts_cout))
         user_info_str = user_info_str.replace("WORK_ACCOUNTS_SALE", str(work_accounts_sale))
         user_info_str = user_info_str.replace("BALANCE", str(balance))
+        if time_to_work_accounts <= 0:
+            time_to_work_accounts = "нисколько"
         user_info_str = user_info_str.replace("TIME_TO_WORK_ACCOUNTS", str(time_to_work_accounts))
         return user_info_str
 
@@ -66,3 +75,14 @@ class TMessagesManager:
 
     def get_support_info(self):
         return self._support
+
+    def accounts_view(self, current_account, max_accounts, account:Account):
+        account_view_str = self._accounts_view.replace("CURR_ACCOUNT", str(current_account))
+        account_view_str = account_view_str.replace("MAX_ACCOUNTS", str(max_accounts))
+        if account is None:
+            return account_view_str.replace("ACCOUNT_TEMPLATE", "У вас нет подключенных аккаунтов...")
+        account_info_str = f"Номер телефона: {account.phone}\n"
+        account_info_str += f"Статус рассылки: " + "Не работает" if not account.send_status else "В работе"
+        account_info_str += "Статус аккаунта: " + "Подключен" if account.account_status else "Ошибка подключения"
+        account_view_str = account_view_str.replace("ACCOUNT_TEMPLATE", account_info_str)
+        return account_view_str

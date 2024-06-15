@@ -3,6 +3,7 @@ from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from TMessagesManager import TMessagesManager
 import time
 from DBManager import DBManager, User
+from typing import List
 
 
 class BotManager:
@@ -40,7 +41,7 @@ class BotManager:
         markup = InlineKeyboardMarkup()
         markup.row_width = 1
         markup.add(InlineKeyboardButton("Профиль", callback_data="profile:"+str(message_id)))
-        markup.add(InlineKeyboardButton("Мои аккаунты", callback_data="accounts:" + str(message_id)))
+        markup.add(InlineKeyboardButton("Мои аккаунты", callback_data="account-0:" + str(message_id)))
         markup.add(InlineKeyboardButton("Об оплате", callback_data="about_payment:" + str(message_id)))
         markup.add(InlineKeyboardButton("Информация", callback_data="info:" + str(message_id)))
         return markup
@@ -153,4 +154,38 @@ class BotManager:
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("Написать в тех поддержку", url="vk.com"))
         markup.add(InlineKeyboardButton("Назад", callback_data="back_from_support:" + str(message_id)))
+        return markup
+
+    async def accounts(self, user_id:int, account_index:int, message_id = None):
+        accounts = self._db.get_accounts_by_user_id(user_id)
+        if len(accounts) == 0:
+            accounts_count = 0
+            account_index = 0
+            account = None
+        else:
+            account = accounts[account_index]
+            accounts_count = len(accounts)
+        if message_id:
+            await self._bot.edit_message_text(chat_id=user_id, text=self._tm_manager.accounts_view(account_index+1, accounts_count, account),
+                                              message_id=message_id, reply_markup=self._accounts_markup_gen(message_id, account_index, accounts_count))
+        else:
+            message = await self._bot.send_message(user_id, "Подождите")
+            message_id = message.message_id
+            await self._bot.edit_message_text(chat_id=user_id,
+                                              text=self._tm_manager.accounts_view(account_index+1, accounts_count, account),
+                                              message_id=message_id,
+                                              reply_markup=self._accounts_markup_gen(message_id, account_index, accounts_count))
+
+    def _accounts_markup_gen(self, message_id, account_index: int, max_accounts: int):
+        markup = InlineKeyboardMarkup()
+        markup.row(
+            InlineKeyboardButton("⬅️", callback_data="account-" + str(
+                account_index - 1 if account_index > 0 else account_index) + ":" + str(message_id)),
+            InlineKeyboardButton("⚙️", callback_data="account_settings-" + str(
+                account_index - 1 if account_index > 0 else account_index) + ":" + str(message_id)),
+            InlineKeyboardButton("➡️", callback_data="account-" + str(
+                account_index + 1 if account_index < max_accounts else account_index) + ":" + str(message_id))
+        )
+        markup.add(InlineKeyboardButton("Добавить аккаунт", callback_data="add_account:" + str(message_id)))
+        markup.add(InlineKeyboardButton("Назад", callback_data="back_from_account_view:" + str(message_id)))
         return markup

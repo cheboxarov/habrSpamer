@@ -1,0 +1,7 @@
+🔥 Общая информация
+➖➖➖➖➖➖➖➖➖➖➖➖➖
+🔗 Подключенных аккаунтов: ACCOUNTS_COUNT
+🏃🏿 Из них работают: WORK_ACCOUNTS_COUNT
+⚖️ Их работа стоит: WORK_ACCOUNTS_SALE руб/сут
+💰 Ваш баланс: BALANCE руб
+⏳ Его хватит еще на: TIME_TO_WORK_ACCOUNTS

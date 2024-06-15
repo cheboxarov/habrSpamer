@@ -55,6 +55,9 @@ async def callback_query(call):
     if call_type == "back_from_pay_info":
         await bot_manager.user_info(user_id, message_id)
 
+    if call_type == "back_from_account_view":
+        await bot_manager.user_info(user_id, message_id)
+
     if call_type == "info":
         await bot_manager.bot_info(user_id, message_id)
 
@@ -67,8 +70,11 @@ async def callback_query(call):
     if call_type == "back_from_support":
         await bot_manager.bot_info(user_id, message_id)
 
+    if call_type.split("-")[0] == "account":
+        await bot_manager.accounts(user_id, int(call_type.split("-")[1]), message_id)
+
     await bot.answer_callback_query(call.id)
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(bot.infinity_polling())
+    asyncio.run(bot.polling())
