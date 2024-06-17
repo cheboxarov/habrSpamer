@@ -9,7 +9,7 @@ import SpamManager
 
 settings = json.loads(open("config.json", "r").read())
 bot = AsyncTeleBot(settings["token"], state_storage=StateMemoryStorage())
-bot_manager = BotManager(bot, 'sqlite:///database.db')
+bot_manager = BotManager(bot, 'sqlite:///database.db', settings["admin"])
 db = DBManager('sqlite:///database.db')
 
 class MyStates(StatesGroup):
@@ -18,10 +18,11 @@ class MyStates(StatesGroup):
     account_message = State()
     account_interval = State()
     account_speed = State()
+    proxy_add = State()
 
 @bot.message_handler(commands=["start"])
-async def start_message(message):
-    await bot_manager.new_user(message)
+async def start_message(msg):
+    await bot_manager.new_user(msg)
 
 @bot.message_handler(state=MyStates.phone)
 async def phone_handler(message):
@@ -47,6 +48,10 @@ async def code_handler(message):
 async def code_handler(message):
     await bot_manager.change_account_speed_end(message.from_user.id, message.text)
     await bot.delete_state(message.from_user.id)
+
+@bot.message_handler(state=MyStates.proxy_add)
+async def proxy_add_handler(message):
+    await bot_manager.admin_add_proxy_end(message.from_user.id, message.text)
 
 @bot.callback_query_handler(func=lambda call: True)
 async def callback_query(call):
@@ -94,7 +99,7 @@ async def callback_query(call):
 
     if call_type == "back_from_support":
         await bot_manager.bot_info(user_id, message_id)
-    if user.days_left <= 0:
+    if user.minutes_left <= 0:
         await bot.answer_callback_query(call.id)
         return
     if call_type == "add_account":
@@ -102,7 +107,10 @@ async def callback_query(call):
         await bot.set_state(user_id, MyStates.phone)
 
     if call_type.split("-")[0] == "account":
-        await bot_manager.accounts(user_id, int(call_type.split("-")[1]), message_id)
+        try:
+            await bot_manager.accounts(user_id, int(call_type.split("-")[1]), message_id)
+        except:
+            pass
 
     if call_type.split("-")[0] == "account_settings":
         await bot_manager.account_settings(user_id, int(call_type.split("-")[1]), message_id)
@@ -110,12 +118,22 @@ async def callback_query(call):
     if call_type.split("-")[0] == "stop_account":
         await bot_manager.stop_account(user_id, int(call_type.split("-")[1]), message_id)
 
+    if call_type.split("-")[0] == "reactivate_account":
+        await bot_manager.reactivate_account(user_id, int(call_type.split("-")[1]), message_id)
+        await bot.set_state(user_id, MyStates.code)
+
+    if call_type.split("-")[0] == "deactive_account":
+        await bot_manager.deactive_account(user_id, int(call_type.split("-")[1]), message_id)
+
     if call_type.split("-")[0] == "start_account":
         await bot_manager.start_account(user_id, int(call_type.split("-")[1]), message_id)
 
     if call_type.split("-")[0] == "change_message":
         await bot_manager.change_account_message_start(user_id, int(call_type.split("-")[1]), message_id)
         await bot.set_state(user_id, MyStates.account_message)
+
+    if call_type.split("-")[0] == "skip_cooldown":
+        await bot_manager.skip_cooldown(user_id, int(call_type.split("-")[1]), message_id)
 
     if call_type.split("-")[0] == "change_interval":
         await bot_manager.change_account_interval_start(user_id, int(call_type.split("-")[1]), message_id)
@@ -128,12 +146,37 @@ async def callback_query(call):
     if call_type.split("-")[0] == "delete_account":
         await bot_manager.delete_account(user_id, int(call_type.split("-")[1]), message_id)
 
+    if call_type.split("-")[0] == "admin":
+        if user_id != settings["admin"]:
+            print(user_id, "Попытался зайти в админ")
+            await bot.answer_callback_query(call.id)
+            return
+        if call_type.split("-")[1] == "proxy":
+            await bot_manager.admin_proxy(user_id, message_id)
+        if call_type.split("-")[1] == "add_proxy":
+            await bot_manager.admin_add_proxy_start(user_id, message_id)
+            await bot.set_state(user_id, MyStates.proxy_add)
+        if call_type.split("-")[1] == "users":
+            await bot_manager.admin_users(user_id, message_id)
+        if call_type.split("-")[1] == "accounts":
+            await bot_manager.admin_accounts(user_id, message_id)
+        if call_type.split("-")[1] == "back":
+            await bot_manager.admin_panel(user_id, message_id)
+        if call_type.split("-")[1] == "messages":
+            await bot_manager.edit_messages(user_id, message_id)
+        if call_type.split("-")[1] == "edit_message":
+            edit_msg = call_type.split("-")[2]
+            await bot_manager.edit_msg_start(user_id, message_id, edit_msg)
+
     await bot.answer_callback_query(call.id)
 
 @bot.message_handler(content_types=["text"])
 async def main_text_handler(message):
     if message.text == "👤 Мой профиль":
         await bot_manager.profile_info(message.from_user.id, message.from_user.username)
+    if message.text == "Админка":
+        await bot_manager.admin_panel(message.from_user.id)
+
 
 
 

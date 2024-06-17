@@ -3,6 +3,10 @@ from DBManager import Account
 
 class TMessagesManager:
     def __init__(self):
+        self.init_templates()
+        self.init_default_templates()
+
+    def init_templates(self):
         import os.path
         if not os.path.exists("messages_template"):
             raise ValueError("Нет папки с шаблонами сообщений!")
@@ -43,6 +47,65 @@ class TMessagesManager:
             raise ValueError("Нет шаблона настройки аккаунтов (messages_template/account_settings.txt)!")
         self._accounts_settings = open("messages_template/account_settings.txt", "r", encoding="utf-8").read()
 
+    def init_default_templates(self):
+        import os.path
+        if not os.path.exists("messages_template_default"):
+            raise ValueError("Нет папки с шаблонами сообщений!")
+
+        if not os.path.exists("messages_template_default/first_message.txt"):
+            raise ValueError("Нет шаблона для первичного сообщения (messages_template_default/first_message.txt)!")
+        self._default_start_message = open("messages_template_default/first_message.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/user_info.txt"):
+            raise ValueError("Нет шаблона информации по юзеру (messages_template_default/user_info.txt)!")
+        self._default_user_info_temlate = open("messages_template_default/user_info.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/profile_info.txt"):
+            raise ValueError("Нет шаблона информации по профилю (messages_template_default/profile_info.txt)!")
+        self._default_profile_info_template = open("messages_template_default/profile_info.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/referal_info.txt"):
+            raise ValueError("Нет шаблона информации по рефералке (messages_template_default/referal_info.txt)!")
+        self._default_referal_info = open("messages_template_default/referal_info.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/about_pay.txt"):
+            raise ValueError("Нет шаблона информации по оплате (messages_template_default/about_pay.txt)!")
+        self._default_about_pay = open("messages_template_default/about_pay.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/info.txt"):
+            raise ValueError("Нет шаблона информации по боту (messages_template_default/info.txt)!")
+        self._default_bot_info = open("messages_template_default/info.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/support.txt"):
+            raise ValueError("Нет шаблона информации по тех. поддержке (messages_template_default/support.txt)!")
+        self._default_support = open("messages_template_default/support.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/accounts_view.txt"):
+            raise ValueError("Нет шаблона отображения аккаунтов (messages_template_default/accounts_view.txt)!")
+        self._default_accounts_view = open("messages_template_default/accounts_view.txt", "r", encoding="utf-8").read()
+
+        if not os.path.exists("messages_template_default/account_settings.txt"):
+            raise ValueError("Нет шаблона настройки аккаунтов (messages_template_default/account_settings.txt)!")
+        self._default_accounts_settings = open("messages_template_default/account_settings.txt", "r", encoding="utf-8").read()
+
+    def get_default_start_message(self):
+        return self._default_start_message
+    def get_default_user_info_temlate(self):
+        return self._default_user_info_temlate
+    def get_default_profile_info_template(self):
+        return self._default_profile_info_template
+    def get_default_referal_info(self):
+        return self._default_referal_info
+    def get_default_about_pay(self):
+        return self._default_about_pay
+    def get_default_bot_info(self):
+        return self._default_bot_info
+    def get_default_accounts_view(self):
+        return self._default_accounts_view
+    def get_default_accounts_settings(self):
+        return self._default_accounts_settings
+    def get_default_support(self):
+        return self._default_support
     def get_start_message(self):
         return self._start_message
 
@@ -57,13 +120,12 @@ class TMessagesManager:
         user_info_str = user_info_str.replace("TIME_TO_WORK_ACCOUNTS", str(time_to_work_accounts)+" дней")
         return user_info_str
 
-    def get_profile_info_message(self, user_id:int, user_nickname:str, date_to_join:str, balance:int, accounts_count:int, referals_count:int):
+    def get_profile_info_message(self, user_id:int, user_nickname:str, date_to_join:str, accounts_count:int, referals_count:int):
         profile_info_str = self._profile_info_template.replace("USER_ID", str(user_id))
         profile_info_str = profile_info_str.replace("USER_NICKNAME", user_nickname)
         profile_info_str = profile_info_str.replace("DATE_TO_JOIN", date_to_join)
         profile_info_str = profile_info_str.replace("REFERALS_COUNT", str(referals_count))
         profile_info_str = profile_info_str.replace("ACCOUNTS_COUNT", str(accounts_count))
-        profile_info_str = profile_info_str.replace("BALANCE", str(balance))
         return profile_info_str
 
     def get_referal_info_message(self, referal_count:int, referal_link:str):

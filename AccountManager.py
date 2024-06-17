@@ -4,21 +4,34 @@ import os
 import json
 import asyncio
 from telethon.tl.types import PeerChannel, DialogFilter
+from DBManager import Proxy, DBManager
 
 # Загружаем настройки из config.json
 settings = json.loads(open("config.json", "r").read())
 
 class AccountManager:
+    _db = DBManager('sqlite:///database.db')
     _api_id = settings["api_id"]
     _api_hash = settings["api_hash"]
-
-    def __init__(self, phone_number, proxy = None):
+    AUTHORISED = 1
+    NEED_CODE = 2
+    AUTH_ERROR = 3
+    def __init__(self, phone_number, proxy:Proxy = None):
         self._session_str = None
         self._code_hash = None
         self.phone_number = phone_number
         self.session_file = f'accounts/{phone_number}.session'
         self.client = None
-        self._proxy = proxy
+        if proxy is None:
+            proxy = self._db.get_account_proxy(phone_number)
+        current_proxy_dict = {
+            "proxy_type": "http",
+            "addr": proxy.host,
+            "port": int(proxy.port),
+            "username": proxy.username,
+            "password": proxy.password,
+        }
+        self._proxy = current_proxy_dict
 
     async def auth(self):
         try:
@@ -35,16 +48,17 @@ class AccountManager:
 
             if self.client.is_connected():
                 if await self.client.is_user_authorized():
-                    return True
+                    return self.AUTHORISED
                 else:
                     result = await self.client.send_code_request(phone=self.phone_number)
                     self._code_hash = result.phone_code_hash
                     self._session_str = self.client.session.save()
-                    return True
-            return False
+                    return self.NEED_CODE
+            self._db.deactive_account(self.phone_number)
+            return self.AUTH_ERROR
         except Exception as e:
             print(f"Authentication error: {e}")
-            return False
+            return self.AUTH_ERROR
 
     async def connect_and_authorize(self, code):
         try:
@@ -99,7 +113,7 @@ class AccountManager:
                     print(f"Message sent to {peer['name']}")
                 except Exception as e:
                     print(f"Error sending message to {peer['name']}: {e}")
-                await asyncio.sleep(interval)
+                await asyncio.sleep(interval*60)
         except Exception as e:
             print(f"Error in send_messages: {e}")
 
