@@ -1,13 +1,49 @@
 from telethon import TelegramClient, functions, types
+from telethon.extensions import html, markdown
 from telethon.sessions import StringSession
 import os
 import json
 import asyncio
-from telethon.tl.types import PeerChannel, DialogFilter
+from telethon.tl.types import PeerChannel, DialogFilter, PeerChat
 from DBManager import Proxy, DBManager
+from telebot.async_telebot import AsyncTeleBot
+import re
 
 # Загружаем настройки из config.json
 settings = json.loads(open("config.json", "r").read())
+class CustomMarkdown:
+    @staticmethod
+    def parse(text):
+        text, entities = markdown.parse(text)
+        for i, e in enumerate(entities):
+            if isinstance(e, types.MessageEntityTextUrl):
+                if e.url == 'spoiler':
+                    entities[i] = types.MessageEntitySpoiler(e.offset, e.length)
+                elif e.url.startswith('emoji/'):
+                    entities[i] = types.MessageEntityCustomEmoji(e.offset, e.length, int(e.url.split('/')[1]))
+        return text, entities
+    @staticmethod
+    def unparse(text, entities):
+        for i, e in enumerate(entities or []):
+            if isinstance(e, types.MessageEntityCustomEmoji):
+                entities[i] = types.MessageEntityTextUrl(e.offset, e.length, f'emoji/{e.document_id}')
+            if isinstance(e, types.MessageEntitySpoiler):
+                entities[i] = types.MessageEntityTextUrl(e.offset, e.length, 'spoiler')
+        return markdown.unparse(text, entities)
+
+def html_to_markdown(html):
+    print(html)
+    regs = re.findall(r'<tg-emoji emoji-id="\d+">.</tg-emoji>', html)
+    print(regs)
+    for reg in regs:
+        id = re.findall(r"\d+", reg)[0]
+        html = html.replace(reg, f"[❤️](emoji/{id})")
+    regs = re.findall(r'<span class="tg-spoiler">.+</span>', html)
+    for reg in regs:
+        newreg = reg.replace('<span class="tg-spoiler">', "[").replace("</span>", "](spoiler)")
+        html = html.replace(reg, newreg)
+    html = html.replace('</tg-emoji>', '')
+    return html
 
 class AccountManager:
     _db = DBManager('sqlite:///database.db')
@@ -16,12 +52,13 @@ class AccountManager:
     AUTHORISED = 1
     NEED_CODE = 2
     AUTH_ERROR = 3
-    def __init__(self, phone_number, proxy:Proxy = None):
+    def __init__(self, phone_number, proxy:Proxy = None, bot_manager = None):
         self._session_str = None
         self._code_hash = None
         self.phone_number = phone_number
         self.session_file = f'accounts/{phone_number}.session'
         self.client = None
+        self._bot_manager = bot_manager
         if proxy is None:
             proxy = self._db.get_account_proxy(phone_number)
         current_proxy_dict = {
@@ -75,7 +112,7 @@ class AccountManager:
             print(f"Authorization error: {e}")
             return False
 
-    async def get_chats_from(self, folder_name="True mail"):
+    async def get_chats_from(self, folder_name="true mail"):
         try:
             await self.client.connect()
             if not await self.client.is_user_authorized():
@@ -87,51 +124,63 @@ class AccountManager:
             peers = []
             if folders:
                 for folder in folders:
-                    if isinstance(folder, DialogFilter) and folder.title == folder_name:
-                        for peer in folder.include_peers:
-                            try:
-                                chanPeer = PeerChannel(channel_id=peer.channel_id)
-                                channel_entity = await self.client.get_entity(chanPeer)
-                                peers.append({"id": peer.channel_id, "name": channel_entity.title})
-                            except Exception as e:
-                                print(f"Error fetching chat: {e}")
+                    try:
+                        if folder.title.lower() == "true mail":
+                            for peer in folder.include_peers:
+                                try:
+                                    chanPeer = PeerChannel(channel_id=peer.channel_id)
+                                    channel_entity = await self.client.get_entity(chanPeer)
+                                    peers.append({"id": peer.channel_id, "name": channel_entity.title})
+                                except Exception as e:
+                                    pass
+                                try:
+                                    chanPeer = PeerChat(chat_id=peer.chat_id)
+                                    channel_entity = await self.client.get_entity(chanPeer)
+                                    peers.append({"id": peer.chat_id, "name": channel_entity.title})
+                                except Exception as e:
+                                    pass
+                    except:
+                        pass
             return peers
         except Exception as e:
             print(f"Error in get_chats_from: {e}")
             return []
 
-    async def send_messages(self, message, interval, folder_name="True mail"):
+    async def send_messages(self, message, speed, interval, send_id, db, photo_path = None, folder_name="True mail"):
         try:
+            self.client.parse_mode = CustomMarkdown()
             peers = await self.get_chats_from(folder_name)
             if not peers:
                 print("No chats found")
                 return
-
+            i = 0
             for peer in peers:
+                account = db.get_account_by_phone(self.phone_number)
+                print(account.send_status)
+                if account.send_status == 0:
+                    return
+                if account.send_id != send_id:
+                    return
+                if i == interval:
+                    await asyncio.sleep(interval * 60)
                 try:
-                    await self.client.send_message(peer['id'], message)
+                    if photo_path is None:
+                        t, e = html.parse(html_to_markdown(message))
+                        txt = markdown.unparse(t, e)
+                        await self.client.send_message(peer['id'], txt)
+                    else:
+                        t, e = html.parse(html_to_markdown(message))
+                        txt = markdown.unparse(t, e)
+                        await self.client.send_file(peer['id'], photo_path, caption=txt)
                     print(f"Message sent to {peer['name']}")
                 except Exception as e:
-                    print(f"Error sending message to {peer['name']}: {e}")
-                await asyncio.sleep(interval*60)
+                    await self._bot_manager.account_blocked(self.phone_number)
+                    return
+                i += 1
+                await asyncio.sleep(speed*60)
         except Exception as e:
             print(f"Error in send_messages: {e}")
 
     def get_phone(self):
         return self.phone_number
 
-async def main():
-    phone_number = "+79333233171"
-    message = "Привет всем"
-    interval = 1000  # Интервал в секундах
-
-    acc = AccountManager(phone_number)
-    if await acc.auth():
-        print("Authenticated successfully")
-        await acc.send_messages(message, interval)
-    else:
-        print("Authentication failed")
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())

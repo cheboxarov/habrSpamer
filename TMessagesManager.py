@@ -110,14 +110,21 @@ class TMessagesManager:
         return self._start_message
 
     def get_user_info_message(self, accounts_count:int, work_accounts_cout:int,
-                              work_accounts_sale:int, balance:int, time_to_work_accounts:int):
+                              work_accounts_sale:int, balance:int, time_to_work_accounts:float):
         user_info_str = self._user_info_temlate.replace("WORK_ACCOUNTS_COUNT", str(work_accounts_cout))
         user_info_str = user_info_str.replace("ACCOUNTS_COUNT", str(accounts_count))
         user_info_str = user_info_str.replace("WORK_ACCOUNTS_SALE", str(work_accounts_sale))
         user_info_str = user_info_str.replace("BALANCE", str(balance))
+        time_to_work_accounts_str = ""
         if time_to_work_accounts <= 0:
-            time_to_work_accounts = "нисколько"
-        user_info_str = user_info_str.replace("TIME_TO_WORK_ACCOUNTS", str(time_to_work_accounts)+" дней")
+            time_to_work_accounts_str = "нисколько"
+        elif time_to_work_accounts < 1:
+            time_to_work_accounts_str = "Меньше дня"
+        elif time_to_work_accounts == 1:
+            time_to_work_accounts_str = str(int(time_to_work_accounts)) + " день"
+        else:
+            time_to_work_accounts_str = str(int(time_to_work_accounts)) + " дней"
+        user_info_str = user_info_str.replace("TIME_TO_WORK_ACCOUNTS", time_to_work_accounts_str)
         return user_info_str
 
     def get_profile_info_message(self, user_id:int, user_nickname:str, date_to_join:str, accounts_count:int, referals_count:int):
@@ -149,7 +156,7 @@ class TMessagesManager:
             return account_view_str.replace("ACCOUNT_TEMPLATE", "У вас нет подключенных аккаунтов...")
         account_info_str = f"Номер телефона: {account.phone}\n"
         account_info_str += "Статус рассылки: " + "Не работает" if not account.send_status else "Статус рассылки: " +"В работе"
-        account_info_str += "\nСтатус аккаунта: " + "Подключен" if account.account_status else "Ошибка подключения"
+        account_info_str += "\nСтатус аккаунта: " + ("Подключен" if account.account_status else "Ошибка подключения")
         account_view_str = account_view_str.replace("ACCOUNT_TEMPLATE", account_info_str)
         return account_view_str
 
