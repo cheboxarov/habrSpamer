@@ -24,6 +24,8 @@ class MyStates(StatesGroup):
     message_from_all = State()
     edit_message = State()
     group_message = State()
+    group_photo = State()
+    group_interval = State()
 
 
 @bot.message_handler(commands=["start"])
@@ -56,6 +58,11 @@ async def code_handler(message: types.Message):
     await bot_manager.change_account_message_end(message.from_user.id, message.text)
     await bot.delete_state(message.from_user.id)
 
+@bot.message_handler(state=MyStates.group_message)
+async def code_handler(message: types.Message):
+    await bot_manager.group_set_message_end(message.from_user.id, message.text)
+    await bot.delete_state(message.from_user.id)
+
 @bot.message_handler(state=MyStates.edit_message)
 async def code_handler(message):
     await bot_manager.edit_msg_close(message.from_user.id, message.text)
@@ -70,15 +77,30 @@ async def photo(message):
     file_path = os.path.join("imgs", f"{message.from_user.id}.jpg")
     with open(file_path, 'wb') as new_file:
         new_file.write(downloaded_file)
-
     await bot_manager.add_photo_end(message.from_user.id)
 
-
+@bot.message_handler(content_types=['photo'], state=MyStates.group_photo)
+async def photo(message):
+    import os
+    fileID = message.photo[-1].file_id
+    file_info = await bot.get_file(fileID)  # Await the coroutine
+    downloaded_file = await bot.download_file(file_info.file_path)  # Await the coroutine
+    await bot_manager.group_set_photo_end(message.from_user.id, downloaded_file)
 
 @bot.message_handler(state=MyStates.account_interval)
 async def code_handler(message):
     await bot_manager.change_account_interval_end(message.from_user.id, message.text)
     await bot.delete_state(message.from_user.id)
+
+@bot.message_handler(state=MyStates.group_interval)
+async def code_handler(message):
+    try:
+        if not int(message.text) is None:
+            await bot_manager.group_set_interval_end(message.from_user.id, int(message.text))
+            await bot.delete_state(message.from_user.id)
+            return
+    except:
+        await bot.send_message(message.from_user.id, "Укажите интервал в минутах!")
 
 
 @bot.message_handler(state=MyStates.account_speed)
@@ -138,15 +160,35 @@ async def callback_query(call):
 
     if call_type == "back_from_support":
         await bot_manager.bot_info(user_id, message_id)
-    if user.minutes_left <= 0:
-        await bot.answer_callback_query(call.id)
-        return
+
     if call_type == "add_account":
+        if user.minutes_left <= 0:
+            await bot.answer_callback_query(call.id)
+            return
         await bot_manager.add_account(user_id, message_id)
         await bot.set_state(user_id, MyStates.phone)
 
     if call_type == "cryptobot_top_up":
         await bot_manager.start_pay(user_id, message_id)
+
+    if call_type == "card_top_up":
+        await bot_manager.select_pay_time_card(user_id, message_id)
+
+    if call_type.split("-")[0] == "card_pay":
+        days = int(call_type.split("-")[1])
+        price = int(call_type.split("-")[2])
+        await bot_manager.pay_card_finish(user_id, message_id,price, days)
+
+    if call_type.split("-")[0] == "card_pay_finish":
+        days = int(call_type.split("-")[2])
+        price = int(call_type.split("-")[1])
+        await bot_manager.check_card_pay(user_id, price, days)
+
+    if call_type.split("-")[0] == "card_pay_apply":
+        user_id = int(call_type.split("-")[1])
+        days = int(call_type.split("-")[3])
+        price = int(call_type.split("-")[2])
+        await bot_manager.user_pay_request_apply(user_id, price, days)
 
     if call_type.split("-")[0] == "account":
         await bot_manager.accounts(user_id, int(call_type.split("-")[1]), message_id)
@@ -158,6 +200,9 @@ async def callback_query(call):
         await bot_manager.stop_account(user_id, int(call_type.split("-")[1]), message_id)
 
     if call_type.split("-")[0] == "reactivate_account":
+        if user.minutes_left <= 0:
+            await bot.answer_callback_query(call.id)
+            return
         await bot_manager.reactivate_account(user_id, int(call_type.split("-")[1]), message_id)
         await bot.set_state(user_id, MyStates.code)
 
@@ -165,6 +210,9 @@ async def callback_query(call):
         await bot_manager.deactive_account(user_id, int(call_type.split("-")[1]), message_id)
 
     if call_type.split("-")[0] == "start_account":
+        if user.minutes_left <= 0:
+            await bot.answer_callback_query(call.id)
+            return
         await bot_manager.start_account(user_id, int(call_type.split("-")[1]), message_id)
 
     if call_type.split("-")[0] == "change_message":
@@ -194,46 +242,87 @@ async def callback_query(call):
     if call_type.split("-")[0] == "group":
         await bot_manager.group_edit(user_id,message_id,  int(call_type.split("-")[1]), int(call_type.split("-")[2]))
 
+    if call_type.split("-")[0] == "pay_account":
+        account_index = int(call_type.split("-")[1])
+        await bot_manager.pay_account_start(user_id, account_index, message_id)
+
+    if call_type.split("-")[0] == "pay_account":
+        account_index = int(call_type.split("-")[1])
+        await bot_manager.pay_account_start(user_id, account_index, message_id)
+
+    if call_type.split("-")[0] == "account_pay":
+        days = int(call_type.split("-")[1])
+        account_index = int(call_type.split("-")[2])
+        price = int(call_type.split("-")[3])
+        await bot_manager.account_pay_finish(user_id, account_index, days, price, message_id)
+
     if call_type.split("-")[0] == "group_settings":
-        if call_type.split("-")[1] == "custom_enbale":
+
+        if call_type.split("-")[1] == "custom_enable":
             await bot_manager.group_set_custom(user_id, group_id=call_type.split("-")[2], message_id=message_id, account_index=call_type.split("-")[3], custom=1)
+
         if call_type.split("-")[1] == "custom_disable":
             await bot_manager.group_set_custom(user_id, group_id=call_type.split("-")[2], message_id=message_id, account_index=call_type.split("-")[3], custom=0)
+
         if call_type.split("-")[1] == "message":
-            await bot_manager.group_set_message_start(user_id, group_id=call_type.split("-")[2], message_id=message_id, account_index=call_type.split("-")[3])
+            await bot_manager.group_set_message_start(user_id, group_id=int(call_type.split("-")[2]), message_id=int(message_id), account_index=int(call_type.split("-")[3]))
             await bot.set_state(user_id, MyStates.group_message)
+
+        if call_type.split("-")[1] == "photo":
+            await bot_manager.group_set_photo_start(user_id, group_id=int(call_type.split("-")[2]), message_id=int(message_id), account_index=int(call_type.split("-")[3]))
+            await bot.set_state(user_id, MyStates.group_photo)
+
+        if call_type.split("-")[1] == "photo_delete":
+            await bot_manager.group_delete_photo(user_id, group_id=int(call_type.split("-")[2]), message_id=int(message_id), account_index=int(call_type.split("-")[3]))
+
+        if call_type.split("-")[1] == "interval":
+            await bot_manager.group_set_interval_start(user_id, group_id=int(call_type.split("-")[2]), message_id=int(message_id), account_index=int(call_type.split("-")[3]))
+            await bot.set_state(user_id, MyStates.group_interval)
 
     if call_type.split("-")[0] == "delete_account":
         await bot_manager.delete_account(user_id, int(call_type.split("-")[1]), message_id)
+
     if call_type.split("|")[0] == "CQ":
         await bot_manager.select_pay_time(user_id, message_id, call_type.split("|")[1])
+
     if call_type.split("|")[0] == "PAY":
         await bot_manager.pay_finish(user_id, message_id, call_type.split("|")[1], call_type.split("|")[2])
+
     if call_type.split("|")[0] == "CHECK":
         await bot_manager.check_pay(user_id, message_id, call_type.split("|")[1], call_type.split("|")[3], call_type.split("|")[2])
+
     if call_type.split("-")[0] == "admin":
         if user_id != settings["admin"]:
             print(user_id, "Попытался зайти в админ")
             await bot.answer_callback_query(call.id)
             return
+
         if call_type.split("-")[1] == "proxy":
             await bot_manager.admin_proxy(user_id, message_id)
+
         if call_type.split("-")[1] == "kill_proxy":
             await bot_manager.admin_kill_proxy(user_id, message_id)
+
         if call_type.split("-")[1] == "add_proxy":
             await bot_manager.admin_add_proxy_start(user_id, message_id)
             await bot.set_state(user_id, MyStates.proxy_add)
+
         if call_type.split("-")[1] == "users":
             await bot_manager.admin_users(user_id, message_id)
+
         if call_type.split("-")[1] == "accounts":
             await bot_manager.admin_accounts(user_id, message_id)
+
         if call_type.split("-")[1] == "back":
             await bot_manager.admin_panel(user_id, message_id)
+
         if call_type.split("-")[1] == "messages":
             await bot_manager.edit_messages(user_id, message_id)
+
         if call_type.split("-")[1] == "send_message":
             await bot.send_message(user_id, "Отправьте сообщение")
             await bot.set_state(user_id, MyStates.message_from_all)
+
         if call_type.split("-")[1] == "edit_message":
             edit_msg = call_type.split("-")[2]
             await bot_manager.edit_msg_start(user_id, message_id, edit_msg)
@@ -249,11 +338,11 @@ async def main_text_handler(message:types.Message):
         if message.text == "Админка":
             await bot_manager.admin_panel(message.from_user.id)
             return
-        if message.text.split(" ")[0] == "/set_minutes":
+        if message.text.split(" ")[0] == "/setbalance":
             db.set_user_balance(int(message.text.split(" ")[1]), int(message.text.split(" ")[2]))
             return
-    if message.text == "👤 Мой профиль":
-        await bot_manager.profile_info(message.from_user.id, message.from_user.username)
+    if message.text == "👤 Главное меню":
+        await bot_manager.user_info(message.from_user.id)
     else:
         await bot_manager.new_user(message)
 
@@ -261,9 +350,9 @@ async def main_text_handler(message:types.Message):
 if __name__ == "__main__":
     import asyncio
     from threading import Thread
-
-    bot.add_custom_filter(asyncio_filters.StateFilter(bot))
-    bot.add_custom_filter(asyncio_filters.IsDigitFilter())
-    spam_manager_process = Thread(target=SpamManager.run, daemon=True)
-    spam_manager_process.start()
-    asyncio.run(bot.polling())
+    while True:
+        bot.add_custom_filter(asyncio_filters.StateFilter(bot))
+        bot.add_custom_filter(asyncio_filters.IsDigitFilter())
+        spam_manager_process = Thread(target=SpamManager.run, daemon=True)
+        spam_manager_process.start()
+        asyncio.run(bot.polling())

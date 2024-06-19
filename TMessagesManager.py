@@ -111,8 +111,8 @@ class TMessagesManager:
 
     def get_user_info_message(self, accounts_count:int, work_accounts_cout:int,
                               work_accounts_sale:int, balance:int, time_to_work_accounts:float):
-        user_info_str = self._user_info_temlate.replace("WORK_ACCOUNTS_COUNT", str(work_accounts_cout))
-        user_info_str = user_info_str.replace("ACCOUNTS_COUNT", str(accounts_count))
+        user_info_str = self._user_info_temlate.replace("WORKACCOUNTSCOUNT", str(work_accounts_cout))
+        user_info_str = user_info_str.replace("ACCOUNTSCOUNT", str(accounts_count))
         user_info_str = user_info_str.replace("WORK_ACCOUNTS_SALE", str(work_accounts_sale))
         user_info_str = user_info_str.replace("BALANCE", str(balance))
         time_to_work_accounts_str = ""
@@ -124,20 +124,20 @@ class TMessagesManager:
             time_to_work_accounts_str = str(int(time_to_work_accounts)) + " день"
         else:
             time_to_work_accounts_str = str(int(time_to_work_accounts)) + " дней"
-        user_info_str = user_info_str.replace("TIME_TO_WORK_ACCOUNTS", time_to_work_accounts_str)
+        user_info_str = user_info_str.replace("TIMETOWORKACCOUNTS", time_to_work_accounts_str)
         return user_info_str
 
     def get_profile_info_message(self, user_id:int, user_nickname:str, date_to_join:str, accounts_count:int, referals_count:int):
-        profile_info_str = self._profile_info_template.replace("USER_ID", str(user_id))
-        profile_info_str = profile_info_str.replace("USER_NICKNAME", user_nickname)
-        profile_info_str = profile_info_str.replace("DATE_TO_JOIN", date_to_join)
-        profile_info_str = profile_info_str.replace("REFERALS_COUNT", str(referals_count))
-        profile_info_str = profile_info_str.replace("ACCOUNTS_COUNT", str(accounts_count))
+        profile_info_str = self._profile_info_template.replace("USERID", str(user_id))
+        profile_info_str = profile_info_str.replace("USERNICKNAME", user_nickname)
+        profile_info_str = profile_info_str.replace("DATETOJOIN", date_to_join)
+        profile_info_str = profile_info_str.replace("REFERALSCOUNT", str(referals_count))
+        profile_info_str = profile_info_str.replace("ACCOUNTSCOUNT", str(accounts_count))
         return profile_info_str
 
     def get_referal_info_message(self, referal_count:int, referal_link:str):
-        referal_info_str = self._referal_info.replace("REFERAL_COUNT", str(referal_count))
-        referal_info_str = referal_info_str.replace("REFERAL_LINK", referal_link)
+        referal_info_str = self._referal_info.replace("REFERALCOUNT", str(referal_count))
+        referal_info_str = referal_info_str.replace("REFERALLINK", referal_link)
         return referal_info_str
 
     def get_pay_info(self):
@@ -150,14 +150,18 @@ class TMessagesManager:
         return self._support
 
     def accounts_view(self, current_account, max_accounts, account:Account):
-        account_view_str = self._accounts_view.replace("CURR_ACCOUNT", str(current_account))
-        account_view_str = account_view_str.replace("MAX_ACCOUNTS", str(max_accounts))
+        account_view_str = self._accounts_view.replace("CURRACCOUNT", str(current_account))
+        account_view_str = account_view_str.replace("MAXACCOUNTS", str(max_accounts))
         if account is None:
             return account_view_str.replace("ACCOUNT_TEMPLATE", "У вас нет подключенных аккаунтов...")
         account_info_str = f"Номер телефона: {account.phone}\n"
         account_info_str += "Статус рассылки: " + "Не работает" if not account.send_status else "Статус рассылки: " +"В работе"
         account_info_str += "\nСтатус аккаунта: " + ("Подключен" if account.account_status else "Ошибка подключения")
-        account_view_str = account_view_str.replace("ACCOUNT_TEMPLATE", account_info_str)
+        if account.minutes_left > 0:
+            account_info_str += f"\nПодписки хватит еще на {int(account.minutes_left / 1440)} дней"
+        else:
+            account_info_str += f"\nПодписка не оформлена 🤥"
+        account_view_str = account_view_str.replace("ACCOUNTTEMPLATE", account_info_str)
         return account_view_str
 
     def account_settings(self, phone, groups, interval, message, speed, cooldown):

@@ -48,6 +48,61 @@ def html_to_markdown(html):
     html = html.replace('</tg-emoji>', '')
     return html
 
+async def send_to_peer(peer, account, acc_manager):
+    accs = db_manager.get_active_accounts()
+    if not account.phone in [acc.phone for acc in accs]:
+        print("Account not active, stopping")
+        return
+    curr_acc = None
+    for acc in accs:
+        if acc.phone == account.phone:
+            curr_acc = acc
+    if curr_acc.send_id != send_id:
+        return
+    group = db_manager.get_group_by_group_id(peer['id'], account.id)
+    print(group.id)
+    if group.cooldown <= 0:
+        try:
+            if group.is_custom == 0:
+                if account.has_photo == 0:
+                    t, e = html.parse(html_to_markdown(account.message_to_send))
+                    txt = markdown.unparse(t, e)
+                    await acc_manager.client.send_message(peer['id'], txt)
+                else:
+                    t, e = html.parse(html_to_markdown(account.message_to_send))
+                    txt = markdown.unparse(t, e)
+                    await acc_manager.client.send_file(peer['id'], account.photo_path, caption=txt)
+            else:
+                try:
+                    if group.has_photo == 0:
+                        t, e = html.parse(html_to_markdown(group.custom_message))
+                        txt = markdown.unparse(t, e)
+                        await acc_manager.client.send_message(peer['id'], txt)
+                    else:
+                        t, e = html.parse(html_to_markdown(group.custom_message))
+                        txt = markdown.unparse(t, e)
+                        await acc_manager.client.send_file(peer['id'], group.custom_photo_path, caption=txt)
+                except:
+                    if account.has_photo is None:
+                        t, e = html.parse(html_to_markdown(account.message_to_send))
+                        txt = markdown.unparse(t, e)
+                        await acc_manager.client.send_message(peer['id'], txt)
+                    else:
+                        t, e = html.parse(html_to_markdown(account.message_to_send))
+                        txt = markdown.unparse(t, e)
+                        await acc_manager.client.send_file(peer['id'], account.photo_path, caption=txt)
+            print(f"Message sent to {peer['name']}")
+            if group.interval > 0:
+                interval = group.interval
+            else:
+                interval = account.interval
+            db_manager.set_group_cooldown(group.id, interval)
+            return True
+        except Exception as e:
+            await bot_manager.account_blocked(acc_manager.phone_number)
+            return False
+    return False
+
 async def send_messages_from_account(account: Account):
     global send_id
     send_id += 1
@@ -65,39 +120,13 @@ async def send_messages_from_account(account: Account):
             if not peers:
                 print("No chats found")
                 return
-            i = 0
             for peer in peers:
-                accs = db_manager.get_active_accounts()
-                if not account.phone in [acc.phone for acc in accs]:
-                    print("Account not active, stopping")
-                    return
-                curr_acc = None
-                for acc in accs:
-                    if acc.phone == account.phone:
-                        curr_acc = acc
-                if curr_acc.send_id != send_id:
-                    return
-                if i == account.interval:
-                    i = 0
-                    await asyncio.sleep(account.interval * 60)
-                try:
-                    if account.has_photo is None:
-                        t, e = html.parse(html_to_markdown(account.message_to_send))
-                        txt = markdown.unparse(t, e)
-                        await acc_manager.client.send_message(peer['id'], txt)
-                    else:
-                        t, e = html.parse(html_to_markdown(account.message_to_send))
-                        txt = markdown.unparse(t, e)
-                        await acc_manager.client.send_file(peer['id'], account.photo_path, caption=txt)
-                    print(f"Message sent to {peer['name']}")
-                except Exception as e:
-                    await bot_manager.account_blocked(acc_manager.phone_number)
-                    return
-                i += 1
-                await asyncio.sleep(account.speed * 60)
+                if await send_to_peer(peer, account, acc_manager):
+                    await asyncio.sleep(1)
         else:
             db_manager.deactive_account(account.phone)
     except Exception as e:
+        # db_manager.deactive_account(account.phone)
         print(f"Error processing account {account.phone}: {e}")
 
 async def main_spam():
@@ -108,16 +137,15 @@ async def main_spam():
             for account in accounts:
                 print(account.id)
                 user = db_manager.get_user_by_user_id(account.user_id)
-                if user.minutes_left <= 0:
+                if account.minutes_left <= 0:
                     db_manager.deactive_account(account.phone)
-                if account.send_status and account.cooldown == 0:
+                if account.send_status:
                     await send_messages_from_account(account)
                     db_manager.set_account_cooldown(account.phone)
-                elif account.cooldown > 0:
-                    db_manager.cooldown_down_minute(account.phone)
         except Exception as e:
             print(f"Error in main loop: {e}")
-        db_manager.users_time_down()
+        db_manager.all_groups_cooldown_down()
+        db_manager.down_all_accounts_minute()
         await asyncio.sleep(60)
 
 def run():

@@ -1,7 +1,6 @@
 👤 Ваш профиль:
 ➖➖➖➖➖➖➖➖➖➖
-🆔 Ваш ID:  USER_ID
-🗿 Никнейм:  USER_NICKNAME
-⏱ Вы с нами с  DATE_TO_JOIN
-🔗 Подключенных аккаунтов: ACCOUNTS_COUNT
-🤑 Рефералов: REFERALS_COUNT
+🆔 Ваш ID:  USERID
+🗿 Никнейм:  USERNICKNAME
+🔗 Подключенных аккаунтов: ACCOUNTSCOUNT
+🤑 Рефералов: REFERALSCOUNT

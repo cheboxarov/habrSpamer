@@ -4,7 +4,7 @@ from TMessagesManager import TMessagesManager
 import time
 from DBManager import DBManager, User, Account
 from AccountManager import AccountManager
-from typing import Dict
+from typing import Dict, List
 import random
 import string
 from aiocryptopay import AioCryptoPay, Networks
@@ -25,7 +25,7 @@ class BotManager:
         self._edit_account:Dict[int, Account] = {}
         self._admin_id = admin_id
         self._edit_message:Dict[int, str] = {}
-        self._edit_group:Dict[int, int] = {}
+        self._edit_group:Dict[int, List] = {}
 
 
     def is_admin(self, id:int) -> bool:
@@ -40,11 +40,11 @@ class BotManager:
         username = message.from_user.username
         if self._db.add_user(user_id, username, str(message.from_user.id), 0, referrer_candidate, 120):
             markup = ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add(KeyboardButton("👤 Мой профиль"))
+            markup.add(KeyboardButton("👤 Главное меню"))
             await self._bot.send_message(user_id, self._tm_manager.get_start_message(), reply_markup=markup)
         else:
             markup = ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add(KeyboardButton("👤 Мой профиль"))
+            markup.add(KeyboardButton("👤 Главное меню"))
             await self._bot.send_message(user_id, "👋🏻 С возвращением!🤓\nПриятно видеть Вас снова!", reply_markup=markup)
 
     async def user_info(self, user_id, message_id = None):
@@ -54,7 +54,7 @@ class BotManager:
         accounts_count = len(accounts)
         work_accounts = [account for account in accounts if account.send_status == True]
         work_accounts_count = len(work_accounts)
-        reply_message = self._tm_manager.get_user_info_message(accounts_count,work_accounts_count,1, 0, days_left)
+        reply_message = self._tm_manager.get_user_info_message(accounts_count,work_accounts_count,1, int(user.balance), days_left)
         if not message_id is None:
             await self._bot.edit_message_text(chat_id=user_id, message_id=message_id, text=reply_message,
                                               reply_markup=self._user_info_markup_gen(user_id, message_id))
@@ -68,11 +68,8 @@ class BotManager:
         user = self._db.get_user_by_user_id(user_id)
         markup = InlineKeyboardMarkup()
         markup.row_width = 1
-        if user.minutes_left > 0:
-            markup.row(InlineKeyboardButton("👤 Профиль", callback_data="profile:"+str(message_id)),
-                       InlineKeyboardButton("👥 Мои аккаунты", callback_data="account-0:" + str(message_id)))
-        else:
-            markup.add(InlineKeyboardButton("👤 Профиль", callback_data="profile:" + str(message_id)))
+        markup.row(InlineKeyboardButton("👤 Профиль", callback_data="profile:" + str(message_id)),
+                   InlineKeyboardButton("👥 Мои аккаунты", callback_data="account-0:" + str(message_id)))
         markup.row(InlineKeyboardButton("💳 Об оплате", callback_data="about_payment:" + str(message_id)),
                    InlineKeyboardButton("ⓘ Информация", callback_data="info:" + str(message_id)))
         return markup
@@ -113,6 +110,7 @@ class BotManager:
     def _top_up_balance_markup_gen(self, message_id):
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("₿ Cryptobot", callback_data="cryptobot_top_up:"+str(message_id)))
+        markup.add(InlineKeyboardButton("₿ Переводом", callback_data="card_top_up:" + str(message_id)))
         markup.add(InlineKeyboardButton(" 🔙 Назад", callback_data="back_from_top_up_balance:"+str(message_id)))
         return markup
 
@@ -235,7 +233,7 @@ class BotManager:
         if is_active:
             settings_btn = InlineKeyboardButton("⚙️", callback_data="account_settings-" + str(account_index) + ":" + str(message_id))
         else:
-            settings_btn = InlineKeyboardButton("Активировать",
+            settings_btn = InlineKeyboardButton("🛠",
                                                 callback_data="reactivate_account-" + str(account_index) + ":" + str(
                                                     message_id))
         markup.row(
@@ -303,14 +301,20 @@ class BotManager:
             return False
         proxy = self._db.get_unused_proxy()[0]
         account = AccountManager(phone, proxy)
-        await account.auth()
-        self._connecting_accounts[user_id] = {"account":account,"proxy_id":proxy.id}
-        await self._bot.send_message(user_id, "Введите код который прийдет в на ваш аккаунт.")
-        return True
+        if AccountManager.AUTH_ERROR != await account.auth():
+            self._connecting_accounts[user_id] = {"account":account,"proxy_id":proxy.id}
+            await self._bot.send_message(user_id, "Введите код который прийдет в на ваш аккаунт.")
+            return True
+        else:
+            message = await self._bot.send_message(user_id, "Аккаунт с таким номером телефона не найден(")
+            time.sleep(3)
+            await self.accounts(user_id, 0, message.message_id)
+            return False
 
     async def code_entered(self, user_id, code):
         active_proxies = self._db.get_used_proxy()
-        if len(active_proxies) < 3:
+        proxies = self._db.get_all_proxies()
+        if len(proxies) - len(active_proxies) < 3:
             await self._bot.send_message(self._admin_id, "Осталось меньше 3 свободных прокси, загрузите еще!")
         account = self._connecting_accounts[user_id]["account"]
         proxy_id = self._connecting_accounts[user_id]["proxy_id"]
@@ -325,8 +329,11 @@ class BotManager:
                 message = await self._bot.send_message(user_id, "Аккаунт подключен.")
             elif DBManager.EXIST == self._db.add_account(account.get_phone(), user_id, proxy_id,False, True,speed=1):
                 message = await self._bot.send_message(user_id, "Аккаунт уже подключен.")
-            elif DBManager.EXIST == self._db.add_account(account.get_phone(), user_id, proxy_id,False, True,speed=1):
+            elif DBManager.NO_PROXY == self._db.add_account(account.get_phone(), user_id, proxy_id,False, True,speed=1):
                 message = await self._bot.send_message(user_id, "У нас не хватает прокси, добавьте аккаунт позднее!")
+            await self.accounts(user_id, 0, message.message_id)
+        else:
+            message = await self._bot.send_message(user_id, "Ошибка подключения аккаунта!")
             await self.accounts(user_id, 0, message.message_id)
 
     async def account_settings(self, user_id, account_index, message_id = None):
@@ -367,12 +374,17 @@ class BotManager:
         account = self._db.get_account_by_index(user_id, account_index)
         is_sending = account.send_status
         markup = InlineKeyboardMarkup()
-        if is_sending:
-            markup.add(InlineKeyboardButton("⛔ Остановить",
-                                            callback_data="stop_account-" + str(account_index) + ":" + str(
-                                                message_id)))
+        if account.minutes_left > 0:
+            if is_sending:
+                markup.add(InlineKeyboardButton("⛔ Остановить",
+                                                callback_data="stop_account-" + str(account_index) + ":" + str(
+                                                    message_id)))
+            else:
+                markup.add(InlineKeyboardButton("🚀 Запустить", callback_data="start_account-"+str(account_index)+":"+str(message_id)))
         else:
-            markup.add(InlineKeyboardButton("🚀 Запустить", callback_data="start_account-"+str(account_index)+":"+str(message_id)))
+            markup.add(InlineKeyboardButton("💸 Оформить подписку",
+                                            callback_data="pay_account-" + str(account_index) + ":" + str(
+                                                message_id)))
         markup.add(
             InlineKeyboardButton("🗑️ Удалить", callback_data="delete_account-" + str(account_index) + ":" + str(message_id)))
         markup.add(
@@ -401,6 +413,48 @@ class BotManager:
             InlineKeyboardButton(" 🔙 Назад",
                                  callback_data="account-" + str(account_index) + ":" + str(message_id)))
         return markup
+
+    async def pay_account_start(self, user_id, account_index, message_id = None):
+        text = "Выберите на сколько дней нужно оформить подписку для данного аккаунта."
+        if message_id is not None:
+            await self._bot.edit_message_text(chat_id=user_id, text=text,
+                                              message_id=message_id, reply_markup=self._account_pay_start_markup_gen(account_index, message_id),
+                                              parse_mode="html")
+        else:
+            message = await self._bot.send_message(user_id, "Подождите ↻")
+            message_id = message.message_id
+            await self._bot.edit_message_text(chat_id=user_id,
+                                              text=text,
+                                              message_id=message_id,
+                                              reply_markup=self._account_pay_start_markup_gen(account_index, message_id),
+                                              parse_mode="html")
+
+    def _account_pay_start_markup_gen(self, account_index, message_id):
+        markup = InlineKeyboardMarkup()
+        price_def = 100
+        markup.add(InlineKeyboardButton("1 день " + str(price_def) + " руб",
+                                        callback_data="account_pay-1-"+str(account_index)+"-"+str(price_def)+":" + str(message_id)))
+        price = price_def * 7 / 100 * 90
+        str_price = str(int(price)) + " руб"
+        markup.add(InlineKeyboardButton("7 дней " + str_price,
+                                        callback_data="account_pay-7-"+str(account_index)+"-"+str(int(price))+":" + str(message_id)))
+        price = price_def * 14 / 100 * 85
+        str_price = str(int(price)) + " руб"
+        markup.add(InlineKeyboardButton("14 дней " + str_price,
+                                        callback_data="account_pay-14-"+str(account_index)+"-"+str(int(price))+":" + str(message_id)))
+        price = price_def * 30 / 100 * 80
+        str_price = str(int(price)) + " руб"
+        markup.add(InlineKeyboardButton("30 дней " + str_price,
+                                        callback_data="account_pay-30-"+str(account_index)+"-"+str(int(price))+":" + str(message_id)))
+        return markup
+
+    async def account_pay_finish(self, user_id, account_index, days_count, price, message_id):
+        result = self._db.account_add_minutes(user_id, account_index, int(days_count), price)
+        if result == DBManager.NO_MONEY:
+            message = await self._bot.send_message(user_id, "На вашем счете недостаточно средств! Пополните пожалуйста баланс.")
+            message_id = message.message_id
+            time.sleep(3)
+        await self.accounts(user_id, account_index, message_id)
 
     async def groups(self, user_id, account_index, message_id):
         account = self._db.get_account_by_index(user_id, account_index)
@@ -438,10 +492,11 @@ class BotManager:
             text += "\nСообщение: " + (group.custom_message if group.custom_message else "Не указано")
         else:
             text += "\nВ группу отправляется обычное сообщение"
+        text += "\nИнтервал: " + ("Не указан" if group.interval == 0 else str(group.interval) + " Мин/Сообщение")
         if message_id is not None:
             await self._bot.edit_message_text(chat_id=user_id, text=text,
                                               message_id=message_id, reply_markup=self._group_edit_markup_gen(message_id,
-                                                                                                              account_index, group_id, group.is_custom),
+                                                                                                              account_index, group_id, group.is_custom, group.has_photo),
                                               parse_mode="html")
         else:
             message = await self._bot.send_message(user_id, "Подождите ↻")
@@ -449,48 +504,102 @@ class BotManager:
             await self._bot.edit_message_text(chat_id=user_id,
                                               text=text,
                                               message_id=message_id,
-                                              reply_markup=self._group_edit_markup_gen(message_id, account_index, group_id, group.is_custom),
+                                              reply_markup=self._group_edit_markup_gen(message_id, account_index, group_id, group.is_custom, group.has_photo),
                                               parse_mode="html")
 
-    def _group_edit_markup_gen(self, message_id, account_index, group_id, is_custom):
+    def _group_edit_markup_gen(self, message_id, account_index, group_id, is_custom, has_photo):
         markup = InlineKeyboardMarkup()
-        if is_custom == 0:
-            markup.add(InlineKeyboardButton("Отправлять кастомное сообщение",
-                                            callback_data="group_settings-custom_enbale-" + str(group_id) + "-" +
-                                                          str(account_index) + ":" + str(message_id)))
-        else:
+        if is_custom == 1:
             markup.add(InlineKeyboardButton("Отправлять обычное сообщение",
                                             callback_data="group_settings-custom_disable-" + str(group_id) + "-" +
                                                           str(account_index) + ":" + str(message_id)))
-        markup.add(InlineKeyboardButton("Изменить сообщение для группы",
-                                        callback_data="group_settings-message-" + str(group_id) + "-" +
-                                                      str(account_index) + ":" + str(message_id)))
-        markup.add(InlineKeyboardButton("Изменить фото для группы",
-                                        callback_data="group_settings-photo-" + str(group_id) + "-" +
+            markup.add(InlineKeyboardButton("Изменить сообщение для группы",
+                                            callback_data="group_settings-message-" + str(group_id) + "-" +
+                                                          str(account_index) + ":" + str(message_id)))
+            if has_photo == 0:
+                markup.add(InlineKeyboardButton("Установить фото для группы",
+                                                callback_data="group_settings-photo-" + str(group_id) + "-" +
+                                                              str(account_index) + ":" + str(message_id)))
+            else:
+                markup.add(InlineKeyboardButton("Удалить фото для группы",
+                                                callback_data="group_settings-photo_delete-" + str(group_id) + "-" +
+                                                              str(account_index) + ":" + str(message_id)))
+        else:
+            markup.add(InlineKeyboardButton("Отправлять кастомное сообщение",
+                                            callback_data="group_settings-custom_enable-" + str(group_id) + "-" +
+                                                          str(account_index) + ":" + str(message_id)))
+        markup.add(InlineKeyboardButton("Изменить интервал",
+                                        callback_data="group_settings-interval-" + str(group_id) + "-" +
                                                       str(account_index) + ":" + str(message_id)))
         markup.add(InlineKeyboardButton("Назад",
                                         callback_data="groups-"+
                                                       str(account_index) + ":" + str(message_id)))
         return markup
 
+    async def group_set_photo_start(self, user_id, message_id, group_id, account_index):
+        account = self._db.get_account_by_index(user_id, account_index)
+        group = self._db.get_group_by_group_id(int(group_id), account.id)
+        self._edit_group[user_id] = []
+        self._edit_group[user_id].append(group.id)
+        self._edit_group[user_id].append(account_index)
+        await self._bot.edit_message_text(chat_id=user_id, text="Отправьте фото, которое нужно будет отправлять.",
+                                          message_id=message_id,
+                                          reply_markup=self._change_account_markup_gen(message_id, account_index))
+
+    async def group_set_photo_end(self, user_id, photo):
+        import os
+        file_path = os.path.join("imgs", f"{user_id}-{self._edit_group[user_id][0]}-.jpg")
+        with open(file_path, 'wb') as new_file:
+            new_file.write(photo)
+            self._db.group_set_has_photo(self._edit_group[user_id][0], 1)
+            self._db.group_set_photo_path(self._edit_group[user_id][0],file_path)
+        group = self._db.get_group_by_id(self._edit_group[user_id][0])
+        await self.group_edit(user_id, None, self._edit_group[user_id][1], group.group_id)
+
     async def group_set_custom(self, user_id, message_id, group_id, account_index, custom):
-        print(user_id, account_index)
         account = self._db.get_account_by_index(user_id, account_index)
         group = self._db.get_group_by_group_id(int(group_id), account.id)
         self._db.group_set_custom(group.id, custom)
         await self.group_edit(user_id, message_id, account_index, group_id)
 
+    async def group_delete_photo(self, user_id, message_id, group_id, account_index):
+        account = self._db.get_account_by_index(user_id, account_index)
+        group = self._db.get_group_by_group_id(int(group_id), account.id)
+        self._db.group_set_has_photo(group.id, 0)
+        await self.group_edit(user_id, message_id, account_index, group_id)
+
     async def group_set_message_start(self, user_id, message_id, group_id, account_index):
         account = self._db.get_account_by_index(user_id, account_index)
         group = self._db.get_group_by_group_id(int(group_id), account.id)
-        self._edit_group[user_id] = group.id
+        self._edit_group[user_id] = []
+        self._edit_group[user_id].append(group.id)
+        self._edit_group[user_id].append(account_index)
         await self._bot.edit_message_text(chat_id=user_id, text="Отправьте сообщение, которое нужно будет отправлять.",
                                           message_id=message_id,
                                           reply_markup=self._change_account_markup_gen(message_id, account_index))
 
     async def group_set_message_end(self, user_id, msg):
-        group_id = self._edit_group[user_id]
+        group_id = self._edit_group[user_id][0]
+        print(group_id)
         self._db.edit_group_message(group_id, msg)
+        group = self._db.get_group_by_id(group_id)
+        await self.group_edit(user_id, None, self._edit_group[user_id][1], group.group_id)
+
+    async def group_set_interval_start(self, user_id, message_id, group_id, account_index):
+        account = self._db.get_account_by_index(user_id, account_index)
+        group = self._db.get_group_by_group_id(int(group_id), account.id)
+        self._edit_group[user_id] = []
+        self._edit_group[user_id].append(group.id)
+        self._edit_group[user_id].append(account_index)
+        await self._bot.edit_message_text(chat_id=user_id, text="Укажите интервал, с какой переодичностью будет отсылаться сообщение в группу (в минутах). Чтобы использовать интервал из настроек аккаунта, укажите 0.",
+                                          message_id=message_id,
+                                          reply_markup=self._change_account_markup_gen(message_id, account_index))
+
+    async def group_set_interval_end(self, user_id, interval):
+        group_id = self._edit_group[user_id][0]
+        self._db.group_set_interval(group_id, interval)
+        group = self._db.get_group_by_id(group_id)
+        await self.group_edit(user_id, None, self._edit_group[user_id][1], group.group_id)
 
     async def add_photo_start(self, user_id, account_index, message_id):
         account = self._db.get_account_by_index(user_id, account_index)
@@ -503,6 +612,7 @@ class BotManager:
         self._db.update_account_photo_path(account.phone, "imgs/"+str(user_id)+".jpg")
         message = await self._bot.send_message(user_id, "Фото установлено!")
         await self.account_settings(user_id, self._db.get_account_index(user_id, account.phone), message.message_id)
+
 
     async def delete_photo(self, user_id, account_index, message_id):
         account = self._db.get_account_by_index(user_id, account_index)
@@ -740,10 +850,11 @@ class BotManager:
 
     async def admin_users(self, user_id, message_id = None):
         text = "Информация о юзерах\n"
+        text += f"\nВыдать баланс - /setbalance userid balance\n"
         users = self._db.get_users()
-        text += "Кол-во юзеров " + str(len(users))
+        text += "\nКол-во юзеров " + str(len(users))
         for user in users:
-            text += f"\n{user.user_id} {user.username}"
+            text += f"\nID: {user.user_id} NAME: {user.username} BALANCE: {user.balance}"
         if message_id is not None:
             await self._bot.edit_message_text(chat_id=user_id, text=text,
                                               message_id=message_id, reply_markup=self._admin_users_markup_gen(message_id))
@@ -761,7 +872,13 @@ class BotManager:
         return markup
 
     async def admin_accounts(self, user_id, message_id = None):
+        accounts = self._db.get_all_accounts()
+        active_accounts = self._db.get_active_accounts()
+        accounts_with_minutes = self._db.get_accounts_with_minutes()
         text = "Информация о аккаунтах"
+        text += f"\nВсего аккаунтов: {len(accounts)}"
+        text += f"\nАктивных аккаунтов: {len(active_accounts)}"
+        text += f"\nАккаунтов с подпиской: {len(accounts_with_minutes)}"
         if message_id is not None:
             await self._bot.edit_message_text(chat_id=user_id, text=text,
                                               message_id=message_id, reply_markup=self._admin_accounts_markup_gen(message_id))
@@ -799,17 +916,10 @@ class BotManager:
         callback = "PAY|"+asset+"|"
         price_def = self._db.get_price_per_day_by_asset(asset)
         markup = InlineKeyboardMarkup()
-        str_price = str(int(price_def)) + " $"
-        markup.add(InlineKeyboardButton("1 день " + str_price, callback_data=callback+"1:"+str(message_id)))
-        price = price_def * 7 / 100 * 90
-        str_price = str(int(price)) + " $"
-        markup.add(InlineKeyboardButton("7 дней " + str_price, callback_data=callback+"7:"+str(message_id)))
-        price = price_def * 14 / 100 * 85
-        str_price = str(int(price)) + " $"
-        markup.add( InlineKeyboardButton("14 дней " + str_price, callback_data=callback+"14:"+str(message_id)))
-        price = price_def * 30 / 100 * 80
-        str_price = str(int(price)) + " $"
-        markup.add(InlineKeyboardButton("30 дней " + str_price, callback_data=callback+"30:"+str(message_id)))
+        markup.add(InlineKeyboardButton("1 $", callback_data=callback+"1:"+str(message_id)))
+        markup.add(InlineKeyboardButton("6 $", callback_data=callback+"7:"+str(message_id)))
+        markup.add( InlineKeyboardButton("11 $ ", callback_data=callback+"14:"+str(message_id)))
+        markup.add(InlineKeyboardButton("24 $", callback_data=callback+"30:"+str(message_id)))
         text = "Выберите срок подписки"
         if message_id is not None:
             await self._bot.edit_message_text(chat_id=user_id, text=text,
@@ -823,13 +933,13 @@ class BotManager:
                                               reply_markup=markup)
     async def pay_finish(self, user_id, message_id, asset, days_count):
         if int(days_count) == 1:
-            amount_price = float(days_count)
+            amount_price = 1
         if int(days_count) == 7:
-            amount_price = float(days_count) / 100 * 90
+            amount_price = 6.5
         if int(days_count) == 14:
-            amount_price = float(days_count) / 100 * 85
+            amount_price = 13
         if int(days_count) == 30:
-            amount_price = float(days_count) / 100 * 80
+            amount_price = 28
         amount = float(amount_price) / self._db.get_price_per_day_by_asset(asset)
         invoce = await self.crypto.create_invoice(asset=asset,
                                              amount=float(amount),
@@ -865,9 +975,9 @@ class BotManager:
             await self.good_pay(user_id, message_id, amount)
 
     async def good_pay(self, user_id, message_id, amount):
-        minutes = int(amount) * 1440
+        money = int(amount) * 100
         print("Оплата прошла от " + str(user_id) + " кол-во дней " + str(amount))
-        self._db.add_user_minutes(user_id, minutes)
+        self._db.add_user_balance(user_id, money)
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("В профиль", callback_data="profile:"+str(message_id)))
         await self._bot.edit_message_text(chat_id=user_id, message_id=message_id, text="Оплата прошла успешно!", reply_markup=markup)
@@ -877,3 +987,76 @@ class BotManager:
         user_id = account.user_id
         self._db.update_account_send_status(phone, 0)
         await self._bot.send_message(user_id, "Аккаунт " + phone + " получил спам-блок, рассылка на нем остановлена.")
+
+    async def select_pay_time_card(self, user_id, message_id):
+        markup = InlineKeyboardMarkup()
+        price_def = 100
+        markup.add(InlineKeyboardButton("100 руб", callback_data="card_pay-1-"+str(price_def)+":"+str(message_id)))
+        price = 600
+        markup.add(InlineKeyboardButton("600 руб", callback_data="card_pay-7-"+str(int(price))+":"+str(message_id)))
+        price = 1100
+        markup.add( InlineKeyboardButton("1100 руб", callback_data="card_pay-14-"+str(int(price))+":"+str(message_id)))
+        price = 2400
+        markup.add(InlineKeyboardButton("2400 руб", callback_data="card_pay-30-"+str(int(price))+":"+str(message_id)))
+        text = "Выберите срок подписки"
+        if message_id is not None:
+            await self._bot.edit_message_text(chat_id=user_id, text=text,
+                                              message_id=message_id, reply_markup=markup)
+        else:
+            message = await self._bot.send_message(user_id, "Подождите ↻")
+            message_id = message.message_id
+            await self._bot.edit_message_text(chat_id=user_id,
+                                              text=text,
+                                              message_id=message_id,
+                                              reply_markup=markup)
+    async def pay_card_finish(self, user_id, message_id, summ, days_count):
+        card = "2200701003592612"
+        text = f"Сумма к оплате: {int(summ)} рублей\n"
+        text += f"Отправьте точную сумму на карту *{card}*, в комментарии *ОБЯЗАТЕЛЬНО* укажите код: *{user_id}*"
+        text += '\nПосле успешной проведенной операции нажмите кнопку:\n*Оплатил*'
+        text = text.replace('.', '\\.').replace('-', '\\-').replace('_', '\\_')
+        if message_id is not None:
+            await self._bot.edit_message_text(chat_id=user_id, text=text,
+                                              message_id=message_id, reply_markup=self._pay_card_markup_gen(user_id, summ, days_count, message_id), parse_mode="MarkdownV2")
+        else:
+            message = await self._bot.send_message(user_id, "Подождите ↻")
+            message_id = message.message_id
+            await self._bot.edit_message_text(chat_id=user_id,
+                                              text=text,
+                                              message_id=message_id,
+                                              reply_markup=self._pay_card_markup_gen(user_id, summ, days_count, message_id), parse_mode="MarkdownV2")
+
+    def _pay_card_markup_gen(self, user_id, summ, days_count, message_id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("Оплатил", callback_data="card_pay_finish-"+str(summ)+"-"+str(days_count)+":"+str(message_id)))
+        return markup
+
+    async def check_card_pay(self, user_id, summ, days_count):
+        await self.user_pay_request(user_id, summ, days_count)
+        await self._bot.send_message(user_id, "Ожидайте подтвержения от админа.")
+
+    async def user_pay_request(self, user_id, summ, days_count, message_id = None):
+        text = "Поступил запрос на оплату от " + str(user_id) + " на сумму " + str(summ)
+        if message_id is not None:
+            await self._bot.edit_message_text(chat_id=self._admin_id, text=text,
+                                              message_id=message_id,
+                                              reply_markup=self._user_pay_request_markup_gen(user_id, summ, days_count, message_id),
+                                              parse_mode="MarkdownV2")
+        else:
+            message = await self._bot.send_message(self._admin_id, "Подождите ↻")
+            message_id = message.message_id
+            await self._bot.edit_message_text(chat_id=self._admin_id,
+                                              text=text,
+                                              message_id=message_id,
+                                              reply_markup=self._user_pay_request_markup_gen(user_id, summ, days_count, message_id),
+                                              parse_mode="MarkdownV2")
+
+    def _user_pay_request_markup_gen(self, user_id, summ, days_count, message_id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("Подтвердить", callback_data="card_pay_apply-"+str(user_id)+"-"+str(summ)+"-"+str(days_count)+":"+str(message_id)))
+        return markup
+
+    async def user_pay_request_apply(self, user_id, summ, days_count):
+        self._db.add_user_balance(user_id, int(days_count) * 100)
+        await self._bot.send_message(int(user_id), "Ваша оплата на " + str(days_count) + " дней прошла успешно!")
+        await self._bot.send_message(self._admin_id, "Оплата для юзера " + str(user_id) + " зарегестрирована на сумму " + str(summ) + ", в днях - " +str(days_count))

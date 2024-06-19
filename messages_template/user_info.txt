@@ -1,5 +1,5 @@
 🔥 Общая информация
 ➖➖➖➖➖➖➖➖➖➖➖➖➖
-🔗 Подключенных аккаунтов: ACCOUNTS_COUNT
-🏃🏿 Из них работают: WORK_ACCOUNTS_COUNT
-⏳ Его хватит еще на: TIME_TO_WORK_ACCOUNTS
+🔗 Подключенных аккаунтов: ACCOUNTSCOUNT
+🏃🏿 Из них работают: WORKACCOUNTSCOUNT
+🤑 Баланс: BALANCE руб
