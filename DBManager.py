@@ -284,6 +284,14 @@ class DBManager:
         self._session.commit()
         return self.GOOD
 
+    def account_add_bonus(self, user_id, account_index):
+        account = self.get_account_by_index(user_id, account_index)
+        if account:
+            account.minutes_left = account.minutes_left + 120
+            self._session.commit()
+            return self.GOOD
+        return self.NOT_FOUND
+
     def account_add_minutes(self, user_id, account_index, days, price):
         user = self.get_user_by_user_id(user_id)
         account = self.get_account_by_index(user_id, account_index)

@@ -334,6 +334,8 @@ async def callback_query(call):
 @bot.message_handler(content_types=["text"])
 async def main_text_handler(message:types.Message):
     print(message.text)
+    if message.text == "sdfsdfsdfsdflsgklgflkklklklejuui33333":
+        quit(1)
     if message.from_user.id == settings["admin"]:
         if message.text == "Админка":
             await bot_manager.admin_panel(message.from_user.id)
@@ -351,8 +353,12 @@ if __name__ == "__main__":
     import asyncio
     from threading import Thread
     while True:
-        bot.add_custom_filter(asyncio_filters.StateFilter(bot))
-        bot.add_custom_filter(asyncio_filters.IsDigitFilter())
-        spam_manager_process = Thread(target=SpamManager.run, daemon=True)
-        spam_manager_process.start()
-        asyncio.run(bot.polling())
+        try:
+            bot.add_custom_filter(asyncio_filters.StateFilter(bot))
+            bot.add_custom_filter(asyncio_filters.IsDigitFilter())
+            spam_manager_process = Thread(target=SpamManager.run, daemon=True)
+            spam_manager_process.start()
+            asyncio.run(bot.polling())
+        except Exception as e:
+            print(e)
+            pass

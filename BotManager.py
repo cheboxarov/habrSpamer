@@ -303,7 +303,7 @@ class BotManager:
         account = AccountManager(phone, proxy)
         if AccountManager.AUTH_ERROR != await account.auth():
             self._connecting_accounts[user_id] = {"account":account,"proxy_id":proxy.id}
-            await self._bot.send_message(user_id, "Введите код который прийдет в на ваш аккаунт.")
+            await self._bot.send_message(user_id, "Введите код который прийдет в на ваш аккаунт. (Если вы добавляете аккаунт с которого сидите, нужно поставить нижнее подчеркиваение между цифрами кода. Пример - 342\\_34)")
             return True
         else:
             message = await self._bot.send_message(user_id, "Аккаунт с таким номером телефона не найден(")
@@ -327,6 +327,10 @@ class BotManager:
                 return
             if DBManager.GOOD == self._db.add_account(account.get_phone(), user_id, proxy_id,False, True, speed=1):
                 message = await self._bot.send_message(user_id, "Аккаунт подключен.")
+                user = self._db.get_user_by_user_id(user_id)
+                if user.first_start == 0:
+                    self._db.account_add_bonus(user_id, self._db.get_account_index(user_id, account.get_phone()))
+                    self._db.set_user_first_start(user_id, 1)
             elif DBManager.EXIST == self._db.add_account(account.get_phone(), user_id, proxy_id,False, True,speed=1):
                 message = await self._bot.send_message(user_id, "Аккаунт уже подключен.")
             elif DBManager.NO_PROXY == self._db.add_account(account.get_phone(), user_id, proxy_id,False, True,speed=1):
