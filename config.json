@@ -1,6 +1,6 @@
 {
-  "token": "7287169096:AAEG-ZtxIixb5oeQNQ1HSime880yh3bvQoE",
-  "admin": 1520435656,
-  "api_id": 27877222,
-  "api_hash": "bf5ca3eaca6292ee4eac55fa2d5d3450"
+  "token": "token",
+  "admin": ["id"],
+  "api_id": id,
+  "api_hash": "hash"
 }
